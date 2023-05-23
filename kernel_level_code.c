@@ -202,23 +202,19 @@ ssize_t lcd_write(struct file *filp, const char __user *buf, size_t count, loff_
 			// Set cursor to the beginning of the second line
 			lcd_send_command(0xC0);
 		}
-
+/*
 		else if (i == 32 || i >= 32)
 		{
 			printk(KERN_INFO"You entered more than 32 characters, LCD won't accept more than 32 chacarter %d\n",__LINE__);
-			//kfree(data);
 		        goto r_class;
-			//exit;
 		}
-
+*/
 		lcd_send_data(data[i]);
 	}
 
 	kfree(data);
 
 	return count;
-r_class:
-	class_destroy(cl);
 }
 
 
