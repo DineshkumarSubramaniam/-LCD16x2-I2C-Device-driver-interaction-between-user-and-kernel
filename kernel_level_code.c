@@ -25,17 +25,20 @@
 
 // Allocating a major number 
 static int major = 239;
+// represents to the device number
 static dev_t devno;
 
 // structure declaration 
-// Structure for I2C adapter  
+// Structure for I2C adapter 
 static struct i2c_adapter *lcd_i2c_adapter  =   NULL; 
-// structure for i2c client(LCD)
+// structure for i2c device client(LCD)
 static struct i2c_client *lcd_client = NULL; 
 
-// structure for creating a device 
+// structure for creating a class, communicating with I2C device 
 static struct class *cl;
+//register the character device driver
 static struct cdev my_lcd_cdev;
+//file operation to be performed in character device driver
 static struct file_operations fops;
 
 // Function declaration's 
@@ -48,6 +51,8 @@ static int lcd_open(struct inode *inode, struct file *file);
 ssize_t lcd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);
 static int lcd_close(struct inode *inode, struct file *file);
 
+// Function declaration's
+void lcd_send_error_code(const char *str);
 
 // lcd_init module 
 int lcd_init(void)
@@ -151,6 +156,18 @@ int lcd_send_command(uint8_t command)
 }
 
 
+// Condition to send the error message to LCD display if string exceeds more than 32 character
+void lcd_send_error_code(const char *str)
+{
+	while (*str)
+	{
+		// calling the function to write the messgae in LCD display
+		lcd_send_data(*str);
+		str++;
+	}
+}
+
+
 // Structure for file operations 
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -179,32 +196,57 @@ static int lcd_open(struct inode *inode, struct file *file)
 // Function to handle write system call 
 ssize_t lcd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
+	printk(KERN_INFO "Write function is opened in line number %d\n",__LINE__);
+
 	char *data;
 	int i;
 
+	// Allocate kernel memory to store the user data 
 	data = kmalloc(count, GFP_KERNEL);
+
+	// error checking for dynamically allocated memory
 	if (!data)
 		return -ENOMEM;
 
+	// Copy the user data to kernel memory 
 	if (copy_from_user(data, buf, count)) 
 	{
 		kfree(data);
 		return -EFAULT;
 	}
+
 	// clear display
 	lcd_send_command(0x01);
 	mdelay(5);
 
+	// Checking whether the string exceeds the LCD display limit 
+	if (count > 32)
+	{
+		// Set cursor to the beginning of the first line
+		lcd_send_command(0x80);
+		lcd_send_error_code(" SORRY!, String ");
+
+		// Set cursor to the beginning of the second line
+		lcd_send_command(0xC0);
+		lcd_send_error_code(" Exceeds limit ");
+		kfree(data);
+		return count;
+	}
+
+	// Loop to print the string
 	for (i = 0; i < count; i++) 
 	{
+		// Condition to send string to second line if string exceeds more than 16 character	
 		if (i == 16) 
 		{
 			// Set cursor to the beginning of the second line
 			lcd_send_command(0xC0);
 		}
-		// Sending the data to the lcd_send_data function
+
+		// lcd_send_data function call to send the string
 		lcd_send_data(data[i]);
 	}
+	printk(KERN_INFO "Write function is closed in line number %d\n",__LINE__);
 
 	kfree(data);
 	return count;
@@ -225,7 +267,6 @@ static int lcd_close(struct inode *inode, struct file *file)
 static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret, minor;
-	//int storage = 0, i;
 	struct device *de_create;
 
 	printk(KERN_INFO"Inside the i2c_probe function , probed successflly in line number %d\n", __LINE__);
@@ -238,13 +279,13 @@ static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		printk(KERN_INFO"alloc_chrdev_region is failed in line number %d\n", __LINE__);
 		return -1;
 	}
+
 	// Accessing the kernel module for an I2C which will interact with an user level program to an  
 	// Assigning the major and minor numbers to the variable's 
 	major = MAJOR(devno);
 	minor = MINOR(devno);
 
 	printk(KERN_INFO "alloc_chrdev_region() allocated dev number of Major number is:%d and  Minor number is:%d in line number %d\n", major, minor,__LINE__);
-
 
 	// Creating an Device class 
 	// Group devices with similar characteristics 
@@ -260,7 +301,7 @@ static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	printk(KERN_INFO"Class created successfully in line number %d\n",__LINE__);
 
 	// Individual devices within a device class 
-	// Class of device , parent for device file,  major and minor number, Device data ,Device name 
+	// Class of device , parent for device file,  major and minor number define panna use aakum, Device data ,Device name 
 	de_create = device_create(cl, NULL, devno, NULL,"I2C_DEVICE");
 	if(IS_ERR(de_create))
 	{
@@ -283,7 +324,12 @@ static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		class_destroy(cl);
 		unregister_chrdev_region(devno, 1);
 	}
+
+	/* Added cdev into kernel */
+	/* the kernel device may add into the device */
 	printk(KERN_INFO "cdev_add() added cdev into kernel in line number %d\n",__LINE__);
+
+	// Assigning the file operation structure
 	my_lcd_cdev.ops = &fops;
 
 	// Calling lcd_init function 
@@ -315,7 +361,6 @@ static int i2c_remove(struct i2c_client *client)
 	// Un-register the character device driver(Major and minor number) 
 	unregister_chrdev_region(devno, 1);
 	printk(KERN_INFO"unregister_chardev_region() released dev num successfull in line %d\n",__LINE__);
-
 
 	return 0;
 }
@@ -358,7 +403,7 @@ static int __init i2c_init(void)
 
 	if( lcd_i2c_adapter  != NULL )
 	{
-		// I2C new device assigned to lcd_client variable
+		// Adding new device in lcd_lient variable
 		lcd_client = i2c_new_device(lcd_i2c_adapter, &i2c_info);
 		printk(KERN_INFO"i2c_new_device() invoked in i2c_init function in line number %d\n",__LINE__);
 
@@ -368,15 +413,14 @@ static int __init i2c_init(void)
 			printk(KERN_INFO"i2c_add_driver() invoked in i2c_init in line number %d\n",__LINE__);
 			return 0;
 		}
-                 
-		// For cleanup the i2c device after use
+
+		// Cleaning the communication channel
 		i2c_put_adapter(lcd_i2c_adapter);
 		printk(KERN_INFO"i2c_put_adapter() invoked in i2c_init function in line number %d\n",__LINE__);
 	}
 
 	pr_info("LCD Driver Added Successfully\n");
 	return 0; 
-
 }
 
 
@@ -406,12 +450,12 @@ static void __exit i2c_exit(void)
 }
 
 
-//Macros for loading module when insmod and rmmod gets called
+//Macros for loading and unloading the device driver when insmod and rmmod gets called
 module_init(i2c_init);
 module_exit(i2c_exit);
 
 
 // Module licenses 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Dinesh Kumar<dsubramaniam@innominds.com>");
-MODULE_DESCRIPTION("Device driver to interact with high level code to display the string passed from high level code");
+MODULE_AUTHOR("Dinesh Kumar Subramaniam<dsubramaniam@innominds.com>");
+MODULE_DESCRIPTION("Device driver to interact with high level code to display the string passed from the same high level code");
