@@ -202,18 +202,11 @@ ssize_t lcd_write(struct file *filp, const char __user *buf, size_t count, loff_
 			// Set cursor to the beginning of the second line
 			lcd_send_command(0xC0);
 		}
-/*
-		else if (i == 32 || i >= 32)
-		{
-			printk(KERN_INFO"You entered more than 32 characters, LCD won't accept more than 32 chacarter %d\n",__LINE__);
-		        goto r_class;
-		}
-*/
+		// Sending the data to the lcd_send_data function
 		lcd_send_data(data[i]);
 	}
 
 	kfree(data);
-
 	return count;
 }
 
@@ -234,12 +227,6 @@ static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int ret, minor;
 	//int storage = 0, i;
 	struct device *de_create;
-
-	//	printk(KERN_INFO"THE STRING STARTED TO WRITE IN LCD IN LINE NUMBER %d\n",__LINE__);
-
-	//	char string[50];
-
-	//	printk(KERN_INFO"THE STRING FINISHED TO WRITE IN LCD IN LINE NUMBER %d\n",__LINE__);
 
 	printk(KERN_INFO"Inside the i2c_probe function , probed successflly in line number %d\n", __LINE__);
 	devno = MKDEV(major, 0);
@@ -273,7 +260,7 @@ static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	printk(KERN_INFO"Class created successfully in line number %d\n",__LINE__);
 
 	// Individual devices within a device class 
-	// Class of device , parent for device file,  major and minor number define panna use aakum, Device data ,Device name 
+	// Class of device , parent for device file,  major and minor number, Device data ,Device name 
 	de_create = device_create(cl, NULL, devno, NULL,"I2C_DEVICE");
 	if(IS_ERR(de_create))
 	{
@@ -371,6 +358,7 @@ static int __init i2c_init(void)
 
 	if( lcd_i2c_adapter  != NULL )
 	{
+		// I2C new device assigned to lcd_client variable
 		lcd_client = i2c_new_device(lcd_i2c_adapter, &i2c_info);
 		printk(KERN_INFO"i2c_new_device() invoked in i2c_init function in line number %d\n",__LINE__);
 
@@ -380,7 +368,8 @@ static int __init i2c_init(void)
 			printk(KERN_INFO"i2c_add_driver() invoked in i2c_init in line number %d\n",__LINE__);
 			return 0;
 		}
-
+                 
+		// For cleanup the i2c device after use
 		i2c_put_adapter(lcd_i2c_adapter);
 		printk(KERN_INFO"i2c_put_adapter() invoked in i2c_init function in line number %d\n",__LINE__);
 	}
